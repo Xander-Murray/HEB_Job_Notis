@@ -2,7 +2,7 @@ import requests
 import json
 
 
-limit = 1  # can be 5, 10, 25, 100
+limit = 100  # can be 5, 10, 25, 100
 page = 1
 url = (
     "https://careers.heb.com/api/jobs"
@@ -30,31 +30,32 @@ headers = {
 
 response = requests.get(url, headers=headers)
 print(response.status_code)
-# print(response.text)
-
 
 data = response.json()
-jobs = data["jobs"]
-# jobs at index one is a dict of "data"
-job_data = jobs[0]
-job_data_data = job_data["data"]
-title = job_data_data["title"]
-
 
 # print(job_data_data.keys())
-print(title)
+# print(title)
+
+
+def get_title(jobs):
+    print(jobs["data"]["title"])
+
+
+def get_jobs(
+    raw_json,
+):  # gets each job from the json and then calls get title where it prints the title to the terminal
+    for job in raw_json["jobs"]:
+        get_title(job)
+
+
+# get_title(data["jobs"])
+get_jobs(data)
 
 
 # print(json.dumps(jobs, indent=2))
 
-# for i, key in enumerate(jobs):
-# print(i, key)
-
-
-# print(response)
-# print(data["path"])
-
 # print(json.dumps(data, indent=2))
+
 
 # print(data.keys())
 # print(json.loads(data))
