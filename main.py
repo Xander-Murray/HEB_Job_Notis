@@ -25,7 +25,6 @@ headers = {
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
-    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 }
 
 response = requests.get(url, headers=headers)
@@ -33,23 +32,48 @@ print(response.status_code)
 
 data = response.json()
 
-# print(job_data_data.keys())
-# print(title)
+
+def score_job(job, term):
+    data = job.get("data", {})
+    term = term.lower()
+
+    title = data.get("title", "") or ""
+    summary = data.get("short_description", "") or ""
+    location = data.get("location", "") or ""
+
+    blob = f"{title} {summary} {location}".lower()
+
+    score = 0
+    if term in title.lower():
+        score += 5
+    if term in summary.lower():
+        score += 3
+    if term in blob:
+        score += 1
+
+    return score
 
 
-def get_title(jobs):
-    print(jobs["data"]["title"])
+def get_title_and_link(job):
+    d = job["data"]
+    return (d.get("title"), d.get("apply_url"))
 
 
-def get_jobs(
-    raw_json,
-):  # gets each job from the json and then calls get title where it prints the title to the terminal
+def get_jobs(raw_json, term):
+    scored = []
+
     for job in raw_json["jobs"]:
-        get_title(job)
+        s = score_job(job, term)
+        if s > 0:
+            scored.append((s, get_title_and_link(job)))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+
+    for score, (title, link) in scored:
+        print(score, title, link)
 
 
-# get_title(data["jobs"])
-get_jobs(data)
+get_jobs(data, "service")
 
 
 # print(json.dumps(jobs, indent=2))
