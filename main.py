@@ -1,11 +1,10 @@
 import requests
-import json
 
 
 scored = []
 
 
-def loop_pages(n, term):
+def loop_pages(n, *terms):
     while n > 0:
         url = (
             "https://careers.heb.com/api/jobs"
@@ -32,16 +31,14 @@ def loop_pages(n, term):
         print(f"Status code: {response.status_code}")
         n -= 1
 
-        get_jobs(response.json(), term)
+        get_jobs(response.json(), *terms)
 
     scored.sort(reverse=True, key=lambda x: x[0])
-    print("----GOT THE JOBS----")
     return scored
 
 
-def score_job(job, term):
+def score_job(job, *terms):
     data = job.get("data", {})
-    term = term.lower()
 
     title = data.get("title", "") or ""
     summary = data.get("short_description", "") or ""
@@ -52,12 +49,14 @@ def score_job(job, term):
     blob = f"{title} {summary} {location} {full_location} {short_location}".lower()
 
     score = 0
-    if term in title.lower():
-        score += 5
-    if term in summary.lower():
-        score += 3
-    if term in blob:
-        score += 1
+    for term in terms:
+        t = term.lower()
+        if t in title.lower():
+            score += 5
+        if t in summary.lower():
+            score += 3
+        if t in blob:
+            score += 1
 
     return score
 
@@ -67,31 +66,30 @@ def get_title_and_link(job):
     return (d.get("title"), d.get("apply_url"))
 
 
-def get_jobs(raw_json, term):
+def get_jobs(raw_json, *terms):
     for job in raw_json["jobs"]:
-        s = score_job(job, term)
+        s = score_job(job, *terms)
         if s > 0:
             scored.append((s, get_title_and_link(job)))
 
 
-def print_scored(scored):
-    for score, (title, link) in scored:
+def print_scored(scored, k):
+    num = int(k)
+    for score, (title, link) in scored[:num]:
         print(score, title, link)
 
 
 limit = input("Enter limit:(max is 100) ")  # can be 5, 10, 25, 100
 page = input("Enter page: ")
 
-search_term = input("Enter a term to filter by: ")
+raw_terms = input("Enter term(s) to filter by (space-separated): ")
+terms = tuple(t for t in raw_terms.split() if t)
 
-graded = loop_pages(int(page), search_term)
-print_scored(graded)
+graded = loop_pages(int(page), *terms)
 
-
-# print(json.dumps(jobs, indent=2))
-
-# print(json.dumps(data, indent=2))
-
-
-# print(data.keys())
-# print(json.loads(data))
+if len(graded) < 1:
+    print("NO JOBS FOUND!")
+else:
+    print("===GOT THE JOBS===")
+    ouput_count = input("How many would you like to output? ")
+    print_scored(graded, ouput_count)
