@@ -1,10 +1,17 @@
+import os
 import requests
+import smtplib
+from dotenv import load_dotenv
 
+load_dotenv()
+
+INTERACTIVE = True
 
 scored = []
 
 
-def loop_pages(n, *terms):
+def loop_pages(n, limit, *terms):
+    scored.clear()
     while n > 0:
         url = (
             "https://careers.heb.com/api/jobs"
@@ -19,7 +26,7 @@ def loop_pages(n, *terms):
             "accept": "application/json, text/plain, */*",
             "accept-language": "en-US,en;q=0.9",
             "priority": "u=1, i",
-            "referer": f"https://careers.heb.com/jobs?page={page}&sortBy=relevance&categories=Store%20Operations&tags1=Part%20Time&limit={limit}",
+            "referer": f"https://careers.heb.com/jobs?page={n}&sortBy=relevance&categories=Store%20Operations&tags1=Part%20Time&limit={limit}",
             "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Linux"',
@@ -63,7 +70,7 @@ def score_job(job, *terms):
 
 def get_title_and_link(job):
     d = job["data"]
-    return (d.get("title"), d.get("apply_url"))
+    return (d.get("title"), f"https://careers.heb.com/jobs/{d.get('slug')}")
 
 
 def get_jobs(raw_json, *terms):
@@ -73,23 +80,50 @@ def get_jobs(raw_json, *terms):
             scored.append((s, get_title_and_link(job)))
 
 
-def print_scored(scored, k):
+def print_scored(scored_list, k):
     num = int(k)
-    for score, (title, link) in scored[:num]:
+    for score, (title, link) in scored_list[:num]:
         print(score, title, link)
 
 
-limit = input("Enter limit:(max is 100) ")  # can be 5, 10, 25, 100
-page = input("Enter page: ")
+if INTERACTIVE:
+    limit = input("Enter limit (max is 100): ")
+    page = input("Enter page: ")
 
-raw_terms = input("Enter term(s) to filter by (space-separated): ")
-terms = tuple(t for t in raw_terms.split() if t)
+    raw_terms = input("Enter term(s) to filter by (space-separated): ")
+    terms = tuple(t for t in raw_terms.split() if t)
 
-graded = loop_pages(int(page), *terms)
+    output_count = int(input("How many would you like to output? "))
+else:
+    limit = os.getenv("JOB_LIMIT", "100")
+    page = os.getenv("JOB_PAGE_START", "3")
 
-if len(graded) < 1:
+    raw_terms = os.getenv("JOB_TERMS", "curbie estore 52 san antonio")
+    terms = tuple(t.strip() for t in raw_terms.replace(",", " ").split() if t)
+
+    output_count = int(os.getenv("JOB_OUTPUT_COUNT", "10"))
+
+
+email_id = os.getenv("EMAIL_ID")
+email_pword = os.getenv("EMAIL_PWORD")
+
+graded = loop_pages(int(page), limit, *terms)
+
+if not graded:
     print("NO JOBS FOUND!")
 else:
     print("===GOT THE JOBS===")
-    ouput_count = input("How many would you like to output? ")
-    print_scored(graded, ouput_count)
+    if INTERACTIVE:
+        print_scored(graded, output_count)
+    else:
+        lines = []
+        for score, (title, link) in graded[:output_count]:
+            lines.append(f"{score} | {title} | {link}")
+
+        message = f"Top {output_count} jobs:\n\n" + "\n".join(lines)
+
+        s = smtplib.SMTP("smtp.gmail.com", 587)
+        s.starttls()
+        s.login(str(email_id), str(email_pword))
+        s.sendmail(str(email_id), str(email_id), message)
+        s.quit()
