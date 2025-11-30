@@ -95,13 +95,12 @@ if INTERACTIVE:
 
     output_count = int(input("How many would you like to output? "))
 else:
-    limit = os.getenv("JOB_LIMIT", "100")
-    page = os.getenv("JOB_PAGE_START", "3")
-
-    raw_terms = os.getenv("JOB_TERMS", "curbie estore 52 san antonio")
+    raw_terms = os.getenv("JOB_TERMS") or "curbie estore 52 san antonio"
     terms = tuple(t.strip() for t in raw_terms.replace(",", " ").split() if t)
 
-    output_count = int(os.getenv("JOB_OUTPUT_COUNT", "10"))
+    limit = os.getenv("JOB_LIMIT") or "100"
+    page = os.getenv("JOB_PAGE_START") or "3"
+    output_count = int(os.getenv("JOB_OUTPUT_COUNT") or "10")
 
 
 email_id = os.getenv("EMAIL_ID")
