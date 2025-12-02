@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-INTERACTIVE = False
+INTERACTIVE = True
 
 scored = []
 
@@ -95,12 +95,15 @@ if INTERACTIVE:
 
     output_count = int(input("How many would you like to output? "))
 else:
-    raw_terms = os.getenv("JOB_TERMS") or "curbie estore 52 san antonio"
+    raw_terms = (
+        os.getenv("JOB_TERMS")
+        or "curbie estore 52 san antonio 49 new service assistant 50"
+    )
     terms = tuple(t.strip() for t in raw_terms.replace(",", " ").split() if t)
 
     limit = os.getenv("JOB_LIMIT") or "100"
-    page = os.getenv("JOB_PAGE_START") or "3"
-    output_count = int(os.getenv("JOB_OUTPUT_COUNT") or "10")
+    page = os.getenv("JOB_PAGE_START") or "4"
+    output_count = int(os.getenv("JOB_OUTPUT_COUNT") or "20")
 
 
 email_id = os.getenv("EMAIL_ID")
