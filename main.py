@@ -12,33 +12,49 @@ scored = []
 
 def loop_pages(n, limit, *terms):
     scored.clear()
-    while n > 0:
-        url = (
-            "https://careers.heb.com/api/jobs"
-            f"?page={n}"
-            f"&sortBy=relevance"
-            "&categories=Store%20Operations"
-            "&tags1=Part%20Time"
-            "&internal=false"
-            f"&limit={limit}"
-        )
-        headers = {
+
+    s = requests.Session()
+    s.headers.update(
+        {
             "accept": "application/json, text/plain, */*",
             "accept-language": "en-US,en;q=0.9",
-            "priority": "u=1, i",
-            "referer": f"https://careers.heb.com/jobs?page={n}&sortBy=relevance&categories=Store%20Operations&tags1=Part%20Time&limit={limit}",
-            "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Linux"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
+            "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            "origin": "https://heb.jibeapply.com",
+            "referer": "https://heb.jibeapply.com/",
         }
-        response = requests.get(url, headers=headers)
-        print(f"Status code: {response.status_code}")
-        n -= 1
+    )
 
-        get_jobs(response.json(), *terms)
+    keywords = " ".join(terms)
+
+    while n > 0:
+        url = "https://heb.jibeapply.com/api/jobs"
+        params = {
+            "keywords": keywords,
+            "sortBy": "relevance",
+            "page": n,
+            "internal": "true",
+            "limit": limit,
+        }
+
+        resp = s.get(url, params=params, timeout=20)
+        ct = resp.headers.get("content-type", "")
+        print(f"page={n} status={resp.status_code} ct={ct} bytes={len(resp.content)}")
+
+        if resp.status_code != 200:
+            print("Non-200 response:", resp.text[:200])
+            n -= 1
+            continue
+
+        try:
+            data = resp.json()
+        except Exception as e:
+            print("JSON decode failed:", e)
+            print(resp.text[:200])
+            n -= 1
+            continue
+
+        get_jobs(data, *terms)
+        n -= 1
 
     scored.sort(reverse=True, key=lambda x: x[0])
     return scored
@@ -95,10 +111,7 @@ if INTERACTIVE:
 
     output_count = int(input("How many would you like to output? "))
 else:
-    raw_terms = (
-        os.getenv("JOB_TERMS")
-        or "curbie estore 52 san antonio 49 new service assistant 50"
-    )
+    raw_terms = os.getenv("JOB_TERMS") or "curbie estore san antonio"
     terms = tuple(t.strip() for t in raw_terms.replace(",", " ").split() if t)
 
     limit = os.getenv("JOB_LIMIT") or "100"
