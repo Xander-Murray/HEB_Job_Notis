@@ -2,7 +2,8 @@ name: run main.py
 
 on:
   schedule:
-    - cron: "0 23 * * *" # 07:00 UTC = 01:00 CST (UTC-6) – adjust if you want a different local time
+    - cron: "0 23 * * *" # 23:00 UTC = 17:00 CST (UTC-6)
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,9 +14,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: setup python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.12"
+          cache: pip
 
       - name: install python packages
         run: |
@@ -28,6 +30,4 @@ jobs:
           EMAIL_PWORD: ${{ secrets.EMAIL_PWORD }}
           JOB_LIMIT: ${{ vars.JOB_LIMIT }}
           JOB_PAGE_START: ${{ vars.JOB_PAGE_START }}
-          JOB_TERMS: ${{ vars.JOB_TERMS }}
-          JOB_OUTPUT_COUNT: ${{ vars.JOB_OUTPUT_COUNT }}
         run: python main.py
