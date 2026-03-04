@@ -1,0 +1,12 @@
+[
+  {
+    "email": "user1@example.com",
+    "terms": ["curbie", "estore"],
+    "output_count": 10
+  },
+  {
+    "email": "user2@example.com",
+    "terms": ["pharmacy", "bakery"],
+    "output_count": 20
+  }
+]
