@@ -54,11 +54,11 @@ def loop_pages(n, limit, *terms):
             n -= 1
             continue
 
-        if not data.get("jobs"):
-            print(f"page={n} returned no jobs, stopping early")
-            break
-
-        scored.extend(get_jobs(data, *terms))
+        page_jobs = data.get("jobs", [])
+        if not page_jobs:
+            print(f"page={n} returned no jobs, skipping")
+        else:
+            scored.extend(get_jobs(data, *terms))
         n -= 1
 
     scored.sort(reverse=True, key=lambda x: x[0])
@@ -159,7 +159,9 @@ def send_email(email_id, email_pword, to_addr, subject, html_body):
 
 
 def run_automated(email_id, email_pword, limit, page):
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    config_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "config.json"
+    )
     if os.path.exists(config_path):
         with open(config_path) as f:
             profiles = json.load(f)
@@ -204,14 +206,18 @@ def run_interactive(limit, page):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HEB Job Alerts")
-    parser.add_argument("--interactive", action="store_true", help="Prompt for inputs instead of using config/env")
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Prompt for inputs instead of using config/env",
+    )
     args = parser.parse_args()
 
     email_id = os.getenv("EMAIL_ID")
     email_pword = os.getenv("EMAIL_PWORD")
 
     limit = os.getenv("JOB_LIMIT") or "100"
-    page = os.getenv("JOB_PAGE_START") or "4"
+    page = os.getenv("JOB_PAGE_START") or "10"
 
     if args.interactive:
         limit = input(f"Enter limit (max is 100) [{limit}]: ") or limit
