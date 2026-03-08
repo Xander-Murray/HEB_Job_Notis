@@ -11,7 +11,22 @@
   },
   {
     "email": "raidkashi@gmail.com",
-    "terms": ["curbie", "csa", "49", "52", "50", "san", "antonio", "shopper", "bagger", "checker", "service", "assistant", "part-time", "part", "rep"],
+    "terms": [
+      "curbie",
+      "csa",
+      "49",
+      "52",
+      "50",
+      "san",
+      "antonio",
+      "bagger",
+      "checker",
+      "service",
+      "assistant",
+      "part-time",
+      "part",
+      "rep"
+    ],
     "output_count": 25
   }
 ]
