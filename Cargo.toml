@@ -1,0 +1,14 @@
+[package]
+name = "heb-alerts"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.105"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "serde", "std"] }
+lettre = { version = "0.11.24", default-features = false, features = ["smtp-transport", "builder", "rustls-tls", "hostname"] }
+regex = "1.13.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "rustls", "query"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.2.3"
