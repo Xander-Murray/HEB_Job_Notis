@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod email;
 mod matcher;
 mod state;
 
