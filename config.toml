@@ -1,0 +1,43 @@
+# HEB Job Alerts configuration.
+#
+# This file is committed to a PUBLIC repo, so it must never contain personal
+# data. Recipient addresses live in the ALERT_TO GitHub secret instead.
+
+[search]
+# Location filter sent to HEB's public jobs API.
+location = "San Antonio, TX"
+# Jobs per page (the API caps this at 100).
+limit = 100
+# Safety cap on how many pages one run will request.
+max_pages = 10
+
+[stores]
+# Store numbers the brother can reach. These are authoritative: a job is a
+# match if its store label (e.g. "SA49-..." or "San Antonio 49 (...)") carries
+# one of these numbers.
+numbers = [49, 50, 52]
+
+# Backup match, used only when a posting has no store number at all.
+# Every word in a pair must appear (case-insensitive) for it to count.
+street_pairs = [
+  ["potranco", "211"],
+  ["culebra", "211"],
+  ["alamo ranch"],
+]
+
+# Some postings cover several stores at once and only name the primary one;
+# the others show up as plain "San Antonio, Texas". A multi-location posting
+# in one of these categories that lists San Antonio is sent with a
+# "multi-store posting, check location" note, since it might include ours.
+multi_location_categories = ["Store Operations", "Pharmacy"]
+
+[roles]
+# Titles containing any of these are management roles and never alerted.
+exclude = ["manager", "director", "supervisor", "unit director", "assistant director"]
+
+# Titles containing any of these (or any part-time job) go in the
+# "Entry-level" section at the top of the email.
+entry_level = [
+  "curbie", "bagger", "checker", "cashier", "customer service", "service rep",
+  "csa", "courtesy", "store partner", "stocker", "estore",
+]

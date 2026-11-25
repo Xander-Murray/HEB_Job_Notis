@@ -1,33 +1,55 @@
-name: run main.py
+name: heb job alerts
 
 on:
   schedule:
-    - cron: "0 23 * * *" # 23:00 UTC = 17:00 CST (UTC-6)
+    # Every 2 hours, on the hour (UTC). GitHub may start scheduled runs late.
+    - cron: "0 */2 * * *"
   workflow_dispatch:
 
+# The job commits seen.json back to the repo.
+permissions:
+  contents: write
+
+# Never run two checks at once (they'd race on seen.json).
+concurrency:
+  group: heb-alerts
+  cancel-in-progress: false
+
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - name: checkout repo content
+      - name: checkout repo
         uses: actions/checkout@v4
 
-      - name: setup python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
+      - name: install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: install python packages
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: cache Rust build
+        uses: Swatinem/rust-cache@v2
 
-      - name: execute py script
+      - name: run tests
+        run: cargo test --release
+
+      - name: check for new jobs
         env:
           EMAIL_ID: ${{ secrets.EMAIL_ID }}
           EMAIL_PWORD: ${{ secrets.EMAIL_PWORD }}
-          JOB_LIMIT: ${{ vars.JOB_LIMIT }}
-          JOB_PAGE_START: ${{ vars.JOB_PAGE_START }}
-        run: python main.py
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+        run: cargo run --release
+
+      - name: save seen.json
+        run: |
+          if git diff --quiet seen.json; then
+            echo "seen.json unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add seen.json
+          git commit -m "chore: update seen jobs"
+          # Rebase in case someone pushed while this run was going.
+          git pull --rebase
+          git push
