@@ -1,0 +1,78 @@
+{
+  "jobs": [
+    {
+      "data": {
+        "req_id": "252483",
+        "slug": "252483",
+        "title": "San Antonio 11 (Valley Hi /Loop 410) RX Tech - Pharmacy Tech - Part time",
+        "location_name": "SA11-Valley Hi Dr/Loop 410",
+        "city": "San Antonio",
+        "state": "Texas",
+        "street_address": "368 Valley Hi Drive",
+        "postal_code": "78242",
+        "posted_date": "2026-11-17T21:50:00+0000",
+        "employment_type": "PART_TIME",
+        "tags1": [
+          "Part Time"
+        ],
+        "description": "Responsibilities Job Summary: As an H-E-B Pharmacy Tech, you'll work in a team e"
+      }
+    },
+    {
+      "data": {
+        "req_id": "252199",
+        "slug": "252199",
+        "title": "San Antonio 53 (IH10/Loop 1604 E) True TX BBQ - Food Production Cook - Part time",
+        "location_name": "San Antonio 53 - IH10/Loop 1604 E",
+        "city": "San Antonio",
+        "state": "Texas",
+        "street_address": "10137 IH-10E",
+        "postal_code": "78154",
+        "posted_date": "2026-11-10T23:18:00+0000",
+        "employment_type": "PART_TIME",
+        "tags1": [
+          "Part Time"
+        ],
+        "description": "Responsibilities Job Summary: As a Food Production Cook, you'll provide superior"
+      }
+    },
+    {
+      "data": {
+        "req_id": "254566",
+        "slug": "254566",
+        "title": "Financial Analyst II - Fresh",
+        "location_name": "Headquarters-Arsenal",
+        "city": "San Antonio",
+        "state": "Texas",
+        "street_address": "646 S. Flores",
+        "postal_code": "78204",
+        "posted_date": "2026-11-19T15:17:00+0000",
+        "employment_type": "FULL_TIME",
+        "tags1": [
+          "Full Time"
+        ],
+        "description": "Responsibilities Job Summary: As a Financial Analyst II, you will perform resear"
+      }
+    },
+    {
+      "data": {
+        "req_id": "999049",
+        "slug": "999049",
+        "title": "San Antonio 49 (Potranco/SH 211) eStores - Curbie - Part time",
+        "location_name": "SA49-Potranco/SH 211",
+        "city": "San Antonio",
+        "state": "Texas",
+        "street_address": "211 Potranco Rd",
+        "postal_code": "78253",
+        "posted_date": "2026-11-24T15:00:00+0000",
+        "employment_type": "PART_TIME",
+        "tags1": [
+          "Part Time"
+        ],
+        "description": "Synthetic fixture job"
+      }
+    }
+  ],
+  "totalCount": 4,
+  "count": 4
+}
