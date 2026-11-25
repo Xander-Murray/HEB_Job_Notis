@@ -292,11 +292,7 @@ mod tests {
     #[test]
     fn collect_dedupes_req_id() {
         // Both pages contain job id "0".
-        let jobs = collect_pages(
-            |p| Ok(if p == 1 { fake_page(0, 1, 5) } else { fake_page(0, 1, 5) }),
-            1,
-            2,
-        )
+        let jobs = collect_pages(|_| Ok(fake_page(0, 1, 5)), 1, 2)
         .unwrap();
         assert_eq!(jobs.len(), 1);
     }
