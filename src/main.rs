@@ -20,6 +20,7 @@ use std::{collections::HashSet, env, path::Path};
 
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
+use lettre::message::Mailbox;
 
 use crate::{config::Config, email::Creds, state::SeenState};
 
@@ -28,29 +29,46 @@ const STATE_PATH: &str = "seen.json";
 
 /// Split a comma-separated recipient list, trimming spaces and skipping
 /// empty entries.
-fn parse_recipients(raw: &str) -> Result<Vec<String>> {
-    let list: Vec<String> = raw
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from)
-        .collect();
-    if list.is_empty() {
+///
+/// Each address is validated now. Errors say *which* entry is bad (`#2`)
+/// but never print the address: this repo's Actions logs are public.
+fn parse_recipients(raw: &str) -> Result<Vec<Mailbox>> {
+    let entries: Vec<&str> = raw.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+    if entries.is_empty() {
         bail!("ALERT_TO has no recipient addresses");
     }
-    Ok(list)
+    entries
+        .iter()
+        .enumerate()
+        // Collecting an iterator of `Result`s into `Result<Vec<_>>` stops at
+        // the first error, a handy Rust idiom.
+        .map(|(i, addr)| {
+            addr.parse::<Mailbox>()
+                .map_err(|_| anyhow::anyhow!("ALERT_TO entry #{} is not a valid email address", i + 1))
+        })
+        .collect()
+}
+
+/// Reject a blank secret. In GitHub Actions an unset secret arrives as an
+/// empty string, not as a missing variable.
+fn non_blank(name: &str, value: String) -> Result<String> {
+    if value.trim().is_empty() {
+        bail!("environment variable {name} is empty");
+    }
+    Ok(value)
 }
 
 /// Read a required environment variable with a helpful error.
 fn require_env(name: &str) -> Result<String> {
-    env::var(name).with_context(|| format!("environment variable {name} must be set"))
+    let value = env::var(name).with_context(|| format!("environment variable {name} must be set"))?;
+    non_blank(name, value)
 }
 
 /// Email settings, read up front on real runs so a missing secret fails the
 /// run immediately, even on quiet days with nothing to send.
 struct Mail {
     creds: Creds,
-    to: Vec<String>,
+    to: Vec<Mailbox>,
 }
 
 fn run(dry_run: bool) -> Result<()> {
@@ -58,10 +76,11 @@ fn run(dry_run: bool) -> Result<()> {
     let mail = if dry_run {
         None
     } else {
-        Some(Mail {
-            creds: Creds { user: require_env("EMAIL_ID")?, password: require_env("EMAIL_PWORD")? },
-            to: parse_recipients(&require_env("ALERT_TO")?)?,
-        })
+        let creds = Creds { user: require_env("EMAIL_ID")?, password: require_env("EMAIL_PWORD")? };
+        email::parse_sender(&creds.user)?;
+        let to = parse_recipients(&require_env("ALERT_TO")?)?;
+        email::check_login(&creds)?;
+        Some(Mail { creds, to })
     };
 
     let today = Utc::now().date_naive();
@@ -133,7 +152,24 @@ mod tests {
     #[test]
     fn parse_recipients_trims_and_skips_empty() {
         let got = parse_recipients(" a@x.com, ,b@y.com ").unwrap();
-        assert_eq!(got, ["a@x.com", "b@y.com"]);
+        let addrs: Vec<String> = got.iter().map(|m| m.email.to_string()).collect();
+        assert_eq!(addrs, ["a@x.com", "b@y.com"]);
+    }
+
+    #[test]
+    fn non_blank_rejects_empty_and_whitespace() {
+        assert!(non_blank("X", String::new()).is_err());
+        assert!(non_blank("X", "   ".into()).is_err());
+        assert_eq!(non_blank("X", "v".into()).unwrap(), "v");
+    }
+
+    #[test]
+    fn parse_recipients_rejects_invalid_address_without_echoing_it() {
+        let err = parse_recipients("a@x.com,not-an-email").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("#2"), "{msg}");
+        // The repo's Actions logs are public: never print the address itself.
+        assert!(!msg.contains("not-an-email"), "{msg}");
     }
 
     #[test]

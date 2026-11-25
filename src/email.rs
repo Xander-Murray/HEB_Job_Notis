@@ -15,6 +15,35 @@ pub struct Creds {
     pub password: String,
 }
 
+/// Parse the sender address.
+///
+/// Rust lesson: `.parse::<Mailbox>()` uses the `FromStr` trait to turn a
+/// string into a validated email address type. A typo in a secret becomes
+/// a clear error up front instead of a confusing SMTP failure later.
+pub fn parse_sender(addr: &str) -> Result<Mailbox> {
+    addr.parse().context("EMAIL_ID is not a valid email address")
+}
+
+fn mailer(creds: &Creds) -> Result<SmtpTransport> {
+    Ok(SmtpTransport::starttls_relay("smtp.gmail.com")
+        .context("setting up Gmail SMTP")?
+        .credentials(Credentials::new(creds.user.clone(), creds.password.clone()))
+        .build())
+}
+
+/// Log in to Gmail without sending anything. Real runs do this every time,
+/// so a revoked app password turns the run red right away, not weeks later
+/// when the first real opening fails to send.
+pub fn check_login(creds: &Creds) -> Result<()> {
+    let ok = mailer(creds)?
+        .test_connection()
+        .context("logging in to Gmail (is the EMAIL_PWORD app password still valid?)")?;
+    if !ok {
+        anyhow::bail!("Gmail SMTP connection test failed");
+    }
+    Ok(())
+}
+
 /// Subject line, e.g. "HEB: 2 new openings at your stores".
 pub fn subject(n: usize) -> String {
     format!("HEB: {}", count_phrase(n))
@@ -33,7 +62,8 @@ struct Row<'a> {
     store: &'a str,
     hours: &'static str,
     posted: &'a str,
-    check_location: bool,
+    /// A "please double-check" note for matches that aren't certain.
+    flag: Option<&'static str>,
 }
 
 // Rust lesson: the `'a` here is a *lifetime*. It tells the compiler that a
@@ -55,7 +85,14 @@ impl<'a> Row<'a> {
                 .as_deref()
                 .map(|d| d.get(..10).unwrap_or(d))
                 .unwrap_or("unknown"),
-            check_location: hit.store == StoreMatch::Street,
+            // Rust lesson: `match` must cover every enum variant. If a new
+            // `StoreMatch` kind is ever added, this stops compiling until
+            // someone decides how the email should show it.
+            flag: match hit.store {
+                StoreMatch::Number(_) => None,
+                StoreMatch::Street => Some("check location"),
+                StoreMatch::MultiLocation => Some("multi-store posting, check location"),
+            },
         }
     }
 }
@@ -92,7 +129,7 @@ pub fn render(hits: &[Hit]) -> (String, String) {
     for (heading, rows) in &sections {
         text.push_str(&format!("\n== {heading} ==\n"));
         for r in rows {
-            let flag = if r.check_location { " [check location]" } else { "" };
+            let flag = r.flag.map(|f| format!(" [{f}]")).unwrap_or_default();
             text.push_str(&format!(
                 "\n{}{flag}\n  {} | {} | posted {}\n  {}\n",
                 r.title, r.store, r.hours, r.posted, r.link
@@ -110,11 +147,14 @@ pub fn render(hits: &[Hit]) -> (String, String) {
             r#"<tr><td style="padding:20px 24px 6px;font:700 13px/1.2 Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#E1251B;">{heading}</td></tr>"#
         ));
         for r in rows {
-            let flag = if r.check_location {
-                r#" <span style="display:inline-block;padding:2px 8px;margin-left:6px;border-radius:10px;background:#FFF1C2;color:#7A5200;font:700 11px Arial,sans-serif;">check location</span>"#
-            } else {
-                ""
-            };
+            let flag = r
+                .flag
+                .map(|f| {
+                    format!(
+                        r#" <span style="display:inline-block;padding:2px 8px;margin-left:6px;border-radius:10px;background:#FFF1C2;color:#7A5200;font:700 11px Arial,sans-serif;">{f}</span>"#
+                    )
+                })
+                .unwrap_or_default();
             body.push_str(&format!(
                 r#"<tr><td style="padding:10px 24px;border-bottom:1px solid #EEE;">
 <a href="{link}" style="font:700 16px/1.35 Arial,sans-serif;color:#1A1A1A;text-decoration:none;">{title}</a>{flag}
@@ -145,27 +185,18 @@ pub fn render(hits: &[Hit]) -> (String, String) {
 }
 
 /// Send one email to every recipient via Gmail SMTP (STARTTLS, port 587).
-pub fn send(creds: &Creds, to: &[String], subject: &str, html: &str, text: &str) -> Result<()> {
-    // Rust lesson: `.parse::<Mailbox>()` uses the `FromStr` trait to turn a
-    // string into a validated email address type. A typo in a secret becomes
-    // a clear error here instead of a confusing SMTP failure later.
-    let from: Mailbox = creds.user.parse().context("EMAIL_ID is not a valid address")?;
+pub fn send(creds: &Creds, to: &[Mailbox], subject: &str, html: &str, text: &str) -> Result<()> {
+    let from = parse_sender(&creds.user)?;
     let mut builder = Message::builder().from(from).subject(subject);
-    for addr in to {
-        let mailbox: Mailbox =
-            addr.parse().with_context(|| format!("invalid recipient address {addr:?}"))?;
-        builder = builder.to(mailbox);
+    for mailbox in to {
+        builder = builder.to(mailbox.clone());
     }
     // `alternative_plain_html` sends both versions; the mail app picks one.
     let message = builder
         .multipart(MultiPart::alternative_plain_html(text.to_string(), html.to_string()))
         .context("building email")?;
 
-    let mailer = SmtpTransport::starttls_relay("smtp.gmail.com")
-        .context("setting up Gmail SMTP")?
-        .credentials(Credentials::new(creds.user.clone(), creds.password.clone()))
-        .build();
-    mailer.send(&message).context("sending email via Gmail")?;
+    mailer(creds)?.send(&message).context("sending email via Gmail")?;
     println!("email sent to {} recipient(s)", to.len());
     Ok(())
 }
@@ -214,6 +245,15 @@ mod tests {
         assert!(text.contains("check location"));
         let (html, _) = render(&[hit("Curbie", Role::EntryLevel, StoreMatch::Number(49))]);
         assert!(!html.contains("check location"));
+    }
+
+    #[test]
+    fn render_marks_multi_location() {
+        let (html, text) = render(&[hit("Curbie", Role::EntryLevel, StoreMatch::MultiLocation)]);
+        for body in [&html, &text] {
+            assert!(body.contains("multi-store posting"));
+            assert!(body.contains("check location"));
+        }
     }
 
     #[test]

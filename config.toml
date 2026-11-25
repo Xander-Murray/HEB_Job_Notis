@@ -25,6 +25,12 @@ street_pairs = [
   ["alamo ranch"],
 ]
 
+# Some postings cover several stores at once and only name the primary one;
+# the others show up as plain "San Antonio, Texas". A multi-location posting
+# in one of these categories that lists San Antonio is sent with a
+# "multi-store posting, check location" note, since it might include ours.
+multi_location_categories = ["Store Operations", "Pharmacy"]
+
 [roles]
 # Titles containing any of these are management roles and never alerted.
 exclude = ["manager", "director", "supervisor", "unit director", "assistant director"]

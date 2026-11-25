@@ -10,12 +10,16 @@ The code is commented heavily to double as a Rust learning project.
 ## How it works
 
 1. **Fetch:** pull every San Antonio-area posting from HEB's public API
-   (`heb.jibeapply.com/api/jobs`). If every request fails, or the API reports
-   zero jobs, the run fails loudly instead of quietly sending nothing.
+   (`heb.jibeapply.com/api/jobs`). If any page fails after retries, or the API
+   reports zero jobs, the run fails loudly instead of quietly sending nothing.
+   Real runs also check the Gmail login and the secrets before fetching.
 2. **Match stores:** keep jobs whose store label carries one of the configured
    store numbers (`SA49-...`, `San Antonio 49 (...)`, `SA049`, ...). Postings
    with no store number at all can still match by street, for example
    `Potranco` + `211`. Those are marked **check location** in the email.
+   Store postings that cover several locations (HEB only names the primary
+   store) are included when they list San Antonio, marked **multi-store
+   posting, check location**.
 3. **Classify:** management roles are dropped. Entry-level roles (curbie,
    bagger, checker, CSA, part-time, ...) go first. Everything else goes in
    "Other roles".

@@ -32,6 +32,8 @@ pub struct Search {
 pub struct Stores {
     pub numbers: Vec<u32>,
     pub street_pairs: Vec<Vec<String>>,
+    /// Job categories treated as store-level for multi-location postings.
+    pub multi_location_categories: Vec<String>,
 }
 
 /// Keyword lists for classifying a job's role.

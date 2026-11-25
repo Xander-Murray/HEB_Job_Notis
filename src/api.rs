@@ -42,6 +42,21 @@ pub struct Job {
     pub employment_type: Option<String>,
     #[serde(default)]
     pub tags1: Option<Vec<String>>,
+    /// True when one requisition covers several stores. `location_name` then
+    /// only names the primary store; the rest appear in `full_location` as
+    /// bare city names ("San Antonio, Texas; San Antonio, Texas").
+    #[serde(rename = "multipleLocations", default)]
+    pub multiple_locations: bool,
+    #[serde(default)]
+    pub full_location: Option<String>,
+    /// e.g. `[{"name": "Store Operations"}]`.
+    #[serde(default)]
+    pub categories: Vec<Category>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Category {
+    pub name: String,
 }
 
 impl Job {
@@ -86,7 +101,9 @@ struct RawPage {
 
 #[derive(Deserialize)]
 struct RawJob {
-    data: Job,
+    // Kept as loose JSON so one malformed posting can be skipped on its own
+    // instead of making the whole page (100 jobs) unreadable.
+    data: serde_json::Value,
 }
 
 /// Parse one API response body.
@@ -96,12 +113,15 @@ pub fn parse_page(body: &str) -> Result<Page> {
         let preview: String = body.chars().take(200).collect();
         format!("unexpected API response: {preview}")
     })?;
-    Ok(Page {
-        // `into_iter().map(...)` consumes the Vec and builds a new one,
-        // moving each `Job` out of its wrapper without copying it.
-        jobs: raw.jobs.into_iter().map(|r| r.data).collect(),
-        total_count: raw.total_count,
-    })
+    let mut jobs = Vec::with_capacity(raw.jobs.len());
+    for raw_job in raw.jobs {
+        // `serde_json::from_value` turns loose JSON into our typed `Job`.
+        match serde_json::from_value::<Job>(raw_job.data) {
+            Ok(job) => jobs.push(job),
+            Err(err) => eprintln!("warning: skipping malformed job record: {err}"),
+        }
+    }
+    Ok(Page { jobs, total_count: raw.total_count })
 }
 
 /// Walk through result pages using `fetch` to get each page's raw body.
@@ -112,11 +132,12 @@ pub fn parse_page(body: &str) -> Result<Page> {
 ///
 /// Rules:
 /// - stop after a short page, or once we've seen `totalCount` jobs
-/// - a single failed page is logged and skipped (the next run, 2 hours later,
-///   will catch anything it hid)
-/// - if *every* page failed, or the API says there are zero jobs, that's an
-///   error: San Antonio always has 100+ postings, so zero means something is
-///   broken (the exact bug the old Python script hid)
+/// - any page that still fails (after `fetch`'s own retries) is an error:
+///   it could be hiding a real opening, and a red run is how we find out
+/// - running out of `max_pages` while pages are still full is an error too
+/// - if the API says there are zero jobs, that's an error: San Antonio
+///   always has 100+ postings, so zero means something is broken (the exact
+///   bug the old Python script hid)
 /// - the same job appearing on two pages is kept once
 pub fn collect_pages(
     mut fetch: impl FnMut(u32) -> Result<String>,
@@ -125,19 +146,21 @@ pub fn collect_pages(
 ) -> Result<Vec<Job>> {
     let mut jobs = Vec::new();
     let mut seen_ids = HashSet::new();
-    let mut ok_pages = 0;
+    let mut failed_pages = Vec::new();
     let mut total_count = 0;
+    let mut finished = false;
 
     for page_no in 1..=max_pages {
         // `and_then` chains two fallible steps: fetch, then parse.
         let page = match fetch(page_no).and_then(|body| parse_page(&body)) {
             Ok(page) => page,
             Err(err) => {
+                // Keep going so the log shows every bad page, then fail below.
                 eprintln!("warning: page={page_no} failed: {err:#}");
+                failed_pages.push(page_no);
                 continue;
             }
         };
-        ok_pages += 1;
         total_count = total_count.max(page.total_count);
         let page_len = page.jobs.len();
         println!("page={page_no} jobs={page_len} total={}", page.total_count);
@@ -150,12 +173,20 @@ pub fn collect_pages(
         }
 
         if page_len < limit as usize || jobs.len() as u64 >= total_count {
+            finished = true;
             break;
         }
     }
 
-    if ok_pages == 0 {
+    if failed_pages.len() == max_pages as usize {
         bail!("every request to the HEB jobs API failed");
+    }
+    if !failed_pages.is_empty() {
+        let list: Vec<String> = failed_pages.iter().map(|p| format!("page={p}")).collect();
+        bail!("HEB jobs API failed for {}; results would be incomplete", list.join(", "));
+    }
+    if !finished {
+        bail!("reached max_pages={max_pages} with more results left; raise it in config.toml");
     }
     if total_count == 0 || jobs.is_empty() {
         bail!("HEB jobs API returned zero jobs; the API or query is probably broken");
@@ -291,10 +322,15 @@ mod tests {
 
     #[test]
     fn collect_dedupes_req_id() {
-        // Both pages contain job id "0".
-        let jobs = collect_pages(|_| Ok(fake_page(0, 1, 5)), 1, 2)
+        // Page 1 has ids 0 and 1; page 2 (short, so the last) repeats id 1.
+        let jobs = collect_pages(
+            |p| Ok(if p == 1 { fake_page(0, 2, 3) } else { fake_page(1, 1, 3) }),
+            2,
+            5,
+        )
         .unwrap();
-        assert_eq!(jobs.len(), 1);
+        let ids: Vec<&str> = jobs.iter().map(|j| j.req_id.as_str()).collect();
+        assert_eq!(ids, ["0", "1"]);
     }
 
     #[test]
@@ -310,8 +346,10 @@ mod tests {
     }
 
     #[test]
-    fn collect_tolerates_one_failed_page() {
-        let jobs = collect_pages(
+    fn collect_errors_when_any_page_fails() {
+        // A page that still fails after retries could be hiding a real
+        // opening, so the run must go red rather than quietly carry on.
+        let err = collect_pages(
             |p| match p {
                 1 => Ok(fake_page(0, 2, 10)),
                 2 => Err(anyhow!("HTTP 500")),
@@ -320,9 +358,23 @@ mod tests {
             2,
             10,
         )
-        .unwrap();
-        let ids: Vec<&str> = jobs.iter().map(|j| j.req_id.as_str()).collect();
-        assert_eq!(ids, ["0", "1", "20"]);
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("page=2"), "{err:#}");
+    }
+
+    #[test]
+    fn collect_errors_when_page_cap_reached() {
+        // Every page is full, so there might be more than max_pages hold.
+        let err = collect_pages(|p| Ok(fake_page(p * 10, 2, 1000)), 2, 3).unwrap_err();
+        assert!(format!("{err:#}").contains("max_pages"), "{err:#}");
+    }
+
+    #[test]
+    fn parse_page_skips_bad_record() {
+        let body = r#"{"jobs":[{"data":{"req_id":"1","slug":"1","title":"Good"}},{"data":{"req_id":"2","title":null}}],"totalCount":2}"#;
+        let page = parse_page(body).unwrap();
+        let ids: Vec<&str> = page.jobs.iter().map(|j| j.req_id.as_str()).collect();
+        assert_eq!(ids, ["1"]);
     }
 
     /// Hits the real API. Run with `cargo test -- --ignored live_fetch`.

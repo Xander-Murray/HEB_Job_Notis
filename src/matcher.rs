@@ -18,6 +18,9 @@ pub enum StoreMatch {
     /// No store number at all, but a street pair matched. Worth a look,
     /// but the email marks it "check location".
     Street,
+    /// A store job posted for several locations, one of them in San Antonio.
+    /// HEB doesn't say which stores, so it might include ours.
+    MultiLocation,
 }
 
 /// Which email section a job belongs in.
@@ -79,10 +82,22 @@ pub fn match_store(job: &Job, stores: &Stores) -> Option<StoreMatch> {
         .and_then(store_number)
         .or_else(|| store_number(&job.title));
 
-    if let Some(n) = number {
-        // The posting names a store. Our store numbers are confirmed, so if
-        // it's a different number, it's a different store. No street backup.
-        return stores.numbers.contains(&n).then_some(StoreMatch::Number(n));
+    if let Some(n) = number
+        && stores.numbers.contains(&n)
+    {
+        return Some(StoreMatch::Number(n));
+    }
+
+    // A store job posted for several locations only names its primary store.
+    // If San Antonio is among the others, one of them could be ours.
+    if is_multi_location_store_job(job, stores) {
+        return Some(StoreMatch::MultiLocation);
+    }
+
+    if number.is_some() {
+        // The posting names a different store. Our store numbers are
+        // confirmed, so that's not one of ours. No street backup.
+        return None;
     }
 
     // Backup: no store number anywhere. Only consider San Antonio postings.
@@ -145,6 +160,19 @@ pub fn select(jobs: &[Job], cfg: &Config) -> Vec<Hit> {
     hits
 }
 
+/// A multi-location posting in a store-level category that lists San Antonio.
+fn is_multi_location_store_job(job: &Job, stores: &Stores) -> bool {
+    let store_level = job
+        .categories
+        .iter()
+        .any(|c| stores.multi_location_categories.iter().any(|want| want.eq_ignore_ascii_case(&c.name)));
+    let lists_san_antonio = job
+        .full_location
+        .as_deref()
+        .is_some_and(|l| l.to_lowercase().contains("san antonio"));
+    job.multiple_locations && store_level && lists_san_antonio
+}
+
 /// Which word edges a keyword has to line up with.
 #[derive(Clone, Copy)]
 enum Boundary {
@@ -184,7 +212,20 @@ pub(crate) mod tests {
             posted_date: Some("2026-11-24T15:00:00+0000".into()),
             employment_type: Some("FULL_TIME".into()),
             tags1: None,
+            multiple_locations: false,
+            full_location: None,
+            categories: vec![],
         }
+    }
+
+    /// Test helper: a multi-location posting.
+    fn multi(location: &str, full_location: &str, category: &str) -> Job {
+        let mut j = job("Front End - Customer Service Assistant", Some(location));
+        j.city = Some("Spring Branch".into());
+        j.multiple_locations = true;
+        j.full_location = Some(full_location.into());
+        j.categories = vec![crate::api::Category { name: category.into() }];
+        j
     }
 
     fn stores() -> Stores {
@@ -195,7 +236,29 @@ pub(crate) mod tests {
                 vec!["culebra".into(), "211".into()],
                 vec!["alamo ranch".into()],
             ],
+            multi_location_categories: vec!["Store Operations".into(), "Pharmacy".into()],
         }
+    }
+
+    #[test]
+    fn match_store_multi_location_store_job() {
+        let sa = "Spring Branch, Texas; San Antonio, Texas; San Antonio, Texas";
+        let j = multi("Bulverde-Hwy 46 West", sa, "Store Operations");
+        assert_eq!(match_store(&j, &stores()), Some(StoreMatch::MultiLocation));
+        // Primary store is a different one, but the others might be ours.
+        let j = multi("SA11-Valley Hi", sa, "Pharmacy");
+        assert_eq!(match_store(&j, &stores()), Some(StoreMatch::MultiLocation));
+        // Primary store is ours: that's a certain match.
+        let j = multi("SA49-Potranco", sa, "Store Operations");
+        assert_eq!(match_store(&j, &stores()), Some(StoreMatch::Number(49)));
+    }
+
+    #[test]
+    fn match_store_multi_location_ignores_non_store_or_non_sa() {
+        let sa = "Austin, Texas; San Antonio, Texas";
+        assert_eq!(match_store(&multi("Headquarters-Arsenal", sa, "eCommerce"), &stores()), None);
+        let j = multi("Bulverde-Hwy 46 West", "Austin, Texas; Dallas, Texas", "Store Operations");
+        assert_eq!(match_store(&j, &stores()), None);
     }
 
     fn roles() -> Roles {
