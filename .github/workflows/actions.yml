@@ -12,7 +12,7 @@ permissions:
 
 # Never run two checks at once (they'd race on seen.json).
 concurrency:
-  group: heb-alerts
+  group: heb-alerts-v2
   cancel-in-progress: false
 
 jobs:
